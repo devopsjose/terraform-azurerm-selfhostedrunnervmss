@@ -10,8 +10,7 @@ stages:
   jobs:
   - job: Plan
     displayName: "Terraform Init & Plan"
-    pool:
-      vmImage: ubuntu-latest
+    pool: Default
     steps:
 
     - task: AzureCLI@2
