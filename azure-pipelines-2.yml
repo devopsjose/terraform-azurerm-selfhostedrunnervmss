@@ -1,29 +1,18 @@
 trigger: none
 
-variables:
-  service_connection: DevOpsMI-ServiceConnection
+pool:
+  name: Default
 
 stages:
-
 - stage: TerraformPlan
-  displayName: "📝 Terraform Plan"
   jobs:
   - job: Plan
-    displayName: "Terraform Init & Plan"
-    pool: 
-      name: Default  # <-- Your self-hosted agent pool name
     steps:
-
-    - task: AzureCLI@2
-      displayName: "Terraform Init & Plan"
+    - task: PowerShell@2
+      displayName: "Terraform Init & Plan with MSI"
       inputs:
-        azureSubscription: $(service_connection)
-        scriptType: ps
-        addSpnToEnvironment: true
-        useGlobalConfig: true
-        scriptLocation: inlineScript
-        workingDirectory: $(System.DefaultWorkingDirectory)
-        inlineScript: |
+        targetType: 'inline'
+        script: |
           $ErrorActionPreference = "Stop"
 
           Write-Output "🔵 Logging into Azure using Managed Identity"
@@ -33,52 +22,10 @@ stages:
           $env:ARM_USE_MSI = "true"
           $env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
           $env:ARM_TENANT_ID = (az account show --query tenantId -o tsv)
-
-          Write-Output "🔵 Terraform Version"
-          terraform version
 
           Write-Output "🔵 Terraform Init (reconfiguring backend)"
           terraform init -reconfigure
 
           Write-Output "🔵 Terraform Plan"
           terraform plan
-
-- stage: TerraformApply
-  displayName: "🚀 Terraform Apply"
-  dependsOn: TerraformPlan
-  jobs:
-  - job: Apply
-    displayName: "Terraform Apply"
-    pool: 
-      name: Default  # <-- Your self-hosted agent pool name
-    steps:
-
-    - task: AzureCLI@2
-      displayName: "Terraform Apply"
-      inputs:
-        azureSubscription: $(service_connection)
-        scriptType: ps
-        addSpnToEnvironment: true
-        useGlobalConfig: true
-        scriptLocation: inlineScript
-        workingDirectory: $(System.DefaultWorkingDirectory)
-        inlineScript: |
-          $ErrorActionPreference = "Stop"
-
-          Write-Output "🔵 Logging into Azure using Managed Identity"
-          az login --identity
-
-          Write-Output "🔵 Setting ARM environment variables for Terraform AzureRM provider"
-          $env:ARM_USE_MSI = "true"
-          $env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
-          $env:ARM_TENANT_ID = (az account show --query tenantId -o tsv)
-
-          Write-Output "🔵 Terraform Version"
-          terraform version
-
-          Write-Output "🔵 Terraform Init (reconfiguring backend)"
-          terraform init -reconfigure
-
-          Write-Output "🔵 Terraform Apply"
-          terraform apply -auto-approve
  
