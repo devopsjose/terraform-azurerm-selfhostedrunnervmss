@@ -1,5 +1,5 @@
 trigger: none
-
+ 
 variables:
   # Terraform inputs
   location:       centralus
@@ -10,60 +10,59 @@ variables:
   vm_size:        Standard_B2ms
   image_sku:      22_04-lts
   identity_type:  SystemAssigned
-
+ 
+  # your DevOps MI service connection
   service_connection: DevOpsMI-ServiceConnection
-
+ 
 stages:
-
-# ──────────────── Plan Stage ─────────────────
 - stage: TerraformPlan
   displayName: "📝 Terraform Plan"
   jobs:
-  - job: Plan
-    displayName: "Init & Plan"
-    pool:
-      vmImage: ubuntu-latest
+  - job: Terraform_Plan
+    pool: { vmImage: ubuntu-latest }
     steps:
-
-    - task: AzureCLI@2
-      displayName: "Login & Terraform Init/Plan"
-      inputs:
-        azureSubscription: $(service_connection)
-        scriptType: bash
-        addSpnToEnvironment: true       # capture servicePrincipalId if needed
-        useGlobalConfig: true
-        scriptLocation: inlineScript
-        inlineScript: |
-          #----------------------------------------------------------------
-          # 1) Login context is established by AzureCLI@2
-          #----------------------------------------------------------------
-          export ARM_USE_AZUREAD=true
-          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-          export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
-          echo "Azure CLI auth ready: sub=$ARM_SUBSCRIPTION_ID tenant=$ARM_TENANT_ID"
-
-          #----------------------------------------------------------------
-          # 2) Install Terraform CLI
-          #----------------------------------------------------------------
-          TERRAFORM_VER=1.5.6
+ 
+      # 1) Login via User-Assigned Managed Identity
+      - task: AzureCLI@2
+        displayName: "Login (User-assigned MI)"
+        inputs:
+          azureSubscription: $(service_connection)
+          scriptType: bash
+          addSpnToEnvironment: true      # exposes servicePrincipalId & servicePrincipalKey :contentReference[oaicite:1]{index=1}
+          useGlobalConfig: true
+          scriptLocation: inlineScript
+          inlineScript: |
+            # export SP-env so Terraform sees a Service Principal login
+            export ARM_CLIENT_ID=$servicePrincipalId
+            export ARM_CLIENT_SECRET=$servicePrincipalKey
+            export ARM_USE_AZUREAD=true
+            export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+            export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+            echo "SP auth ready: sub=$ARM_SUBSCRIPTION_ID tenant=$ARM_TENANT_ID client=$ARM_CLIENT_ID"
+ 
+      # 2) Install Terraform 1.11.3
+      - script: |
+          TERRAFORM_VER=1.11.3
           wget https://releases.hashicorp.com/terraform/${TERRAFORM_VER}/terraform_${TERRAFORM_VER}_linux_amd64.zip
           unzip terraform_${TERRAFORM_VER}_linux_amd64.zip
           sudo mv terraform /usr/local/bin
           terraform version
-
-          #----------------------------------------------------------------
-          # 3) terraform init (must include use_azuread_auth here too)
-          #----------------------------------------------------------------
+        displayName: "Install Terraform CLI"
+ 
+      # 3) terraform init (supply use_azuread_auth + subscription/tenant) :contentReference[oaicite:2]{index=2}
+      - script: |
           terraform init \
             -backend-config="resource_group_name=$(resource_group)" \
             -backend-config="storage_account_name=tfstatestorageacct2" \
             -backend-config="container_name=tfstate" \
             -backend-config="key=vmss.tfstate" \
-            -backend-config="use_azuread_auth=true"
-
-          #----------------------------------------------------------------
-          # 4) terraform plan
-          #----------------------------------------------------------------
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="subscription_id=$ARM_SUBSCRIPTION_ID" \
+            -backend-config="tenant_id=$ARM_TENANT_ID"
+        displayName: "terraform init"
+ 
+      # 4) terraform plan
+      - script: |
           terraform plan \
             -var="location=$(location)" \
             -var="resource_group=$(resource_group)" \
@@ -73,51 +72,56 @@ stages:
             -var="vm_size=$(vm_size)" \
             -var="image_sku=$(image_sku)" \
             -var="identity_type=$(identity_type)"
-
-  - job: ConfirmPlan
-    displayName: "✔️ Approve Plan"
-    pool: server                   # agentless
+        displayName: "terraform plan"
+ 
+  - job: Confirm_Terraform_Plan
+    displayName: "✔️ Confirm Terraform Plan"
+    pool: server
     timeoutInMinutes: 1440
     steps:
       - task: ManualValidation@0
         timeoutInMinutes: 1440
         inputs:
-          notifyUsers: ''  
+          notifyUsers: ''
           instructions: |
-            Please review the Terraform plan  
-            in the “Init & Plan” job above,  
-            then click Approve to continue.
+            Please review the Terraform plan in the “Init & Plan” job above,  
+            then click **Approve** to continue.
           onTimeout: reject
-
-# ──────────────── Apply Stage ─────────────────
+ 
 - stage: TerraformApply
   displayName: "🚀 Terraform Apply"
   dependsOn: TerraformPlan
   jobs:
-  - job: Apply
-    displayName: "Apply"
-    pool:
-      vmImage: ubuntu-latest
+  - job: Terraform_Apply
+    pool: { vmImage: ubuntu-latest }
     steps:
-
-    - task: AzureCLI@2
-      displayName: "Login & Terraform Apply"
-      inputs:
-        azureSubscription: $(service_connection)
-        scriptType: bash
-        addSpnToEnvironment: true
-        useGlobalConfig: true
-        scriptLocation: inlineScript
-        inlineScript: |
-          export ARM_USE_AZUREAD=true
-          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-          export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
-
-          TERRAFORM_VER=1.5.6
+ 
+      # login again to refresh SP credentials
+      - task: AzureCLI@2
+        displayName: "Login (User-assigned MI)"
+        inputs:
+          azureSubscription: $(service_connection)
+          scriptType: bash
+          addSpnToEnvironment: true
+          useGlobalConfig: true
+          scriptLocation: inlineScript
+          inlineScript: |
+            export ARM_CLIENT_ID=$servicePrincipalId
+            export ARM_CLIENT_SECRET=$servicePrincipalKey
+            export ARM_USE_AZUREAD=true
+            export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+            export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+ 
+      # install Terraform again on fresh agent
+      - script: |
+          TERRAFORM_VER=1.11.3
           wget https://releases.hashicorp.com/terraform/${TERRAFORM_VER}/terraform_${TERRAFORM_VER}_linux_amd64.zip
           unzip terraform_${TERRAFORM_VER}_linux_amd64.zip
           sudo mv terraform /usr/local/bin
-
+        displayName: "Install Terraform CLI"
+ 
+      # apply
+      - script: |
           terraform apply -auto-approve \
             -var="location=$(location)" \
             -var="resource_group=$(resource_group)" \
@@ -127,6 +131,7 @@ stages:
             -var="vm_size=$(vm_size)" \
             -var="image_sku=$(image_sku)" \
             -var="identity_type=$(identity_type)"
+        displayName: "terraform apply"
  
  
  
