@@ -1,84 +1,31 @@
 trigger: none
 
 variables:
-  service_connection: DevOpsMI-ServiceConnection
+  service_connection: DevOpsMI-ServiceConnection  # Your service connection name
 
 stages:
 
-# ─────────── Terraform Plan Stage ───────────
 - stage: TerraformPlan
   displayName: "📝 Terraform Plan"
   jobs:
   - job: Plan
     displayName: "Terraform Init & Plan"
     pool:
-      name: Default  # Your self-hosted agent pool
+      name: Default  # Use your self-hosted agent pool name (usually 'Default')
     steps:
-
-    - checkout: self
-
-    - task: PowerShell@2
-      displayName: "Install latest Terraform"
-      inputs:
-        targetType: 'inline'
-        script: |
-          Write-Host "🔵 Installing latest Terraform"
-          $latestVersion = Invoke-RestMethod -Uri "https://checkpoint-api.hashicorp.com/v1/check/terraform" | Select-Object -ExpandProperty current_version
-          Write-Host "Latest Terraform version: $latestVersion"
-          Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$latestVersion/terraform_${latestVersion}_windows_amd64.zip" -OutFile "terraform.zip"
-          Expand-Archive -Path terraform.zip -DestinationPath "$env:USERPROFILE\terraform"
-          $env:PATH += ";$env:USERPROFILE\terraform"
-          terraform version
 
     - task: AzureCLI@2
       displayName: "Terraform Init & Plan"
       inputs:
         azureSubscription: $(service_connection)
-        scriptType: 'ps'
+        scriptType: pscore  # Since it's a Windows VM, use PowerShell Core (not Bash)
         addSpnToEnvironment: true
         useGlobalConfig: true
-        scriptLocation: 'inlineScript'
+        scriptLocation: inlineScript
         inlineScript: |
-          Write-Host "🔵 Authenticating with Managed Identity"
+          # Stop on error
+          $ErrorActionPreference = "Stop"
 
-          $env:ARM_USE_MSI = "true"
-          $env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
-          $env:ARM_TENANT_ID = (az account show --query tenantId -o tsv)
-
-          Write-Host "🔵 Running Terraform Init"
-          terraform init
-
-          Write-Host "🔵 Running Terraform Plan"
-          terraform plan
-
-# ─────────── Terraform Apply Stage ───────────
-- stage: TerraformApply
-  displayName: "🚀 Terraform Apply"
-  dependsOn: TerraformPlan
-  jobs:
-  - job: Apply
-    displayName: "Terraform Apply"
-    pool:
-      name: Default
-    steps:
-
-    - checkout: self
-
-    - task: AzureCLI@2
-      displayName: "Terraform Apply"
-      inputs:
-        azureSubscription: $(service_connection)
-        scriptType: 'ps'
-        addSpnToEnvironment: true
-        useGlobalConfig: true
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          Write-Host "🔵 Authenticating with Managed Identity"
-
-          $env:ARM_USE_MSI = "true"
-          $env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
-          $env:ARM_TENANT_ID = (az account show --query tenantId -o tsv)
-
-          Write-Host "🔵 Running Terraform Apply"
-          terraform apply -auto-approve
+          Write-Host "🔵 Checking Terraform version"
+          terraform -
  
