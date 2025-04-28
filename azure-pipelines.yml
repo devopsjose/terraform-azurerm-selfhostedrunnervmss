@@ -2,9 +2,9 @@
 trigger: none
 
 variables:
-  # Terraform vars
+  # Terraform variables
   location:       centralus
-  resource_group: vmss-test-rg
+  resource_group: tfstate-rg
   vnet_name:      vmss-test-vnet
   subnet_name:    vmss-test-subnet
   vmss_name:      vmss-test-vmss
@@ -12,8 +12,8 @@ variables:
   image_sku:      22_04-lts
   identity_type:  SystemAssigned
 
-  # name of your ARM service connection configured to use Managed Identity
-  service_connection: 'DevOpsMI-ServiceConnection'
+  # your DevOps service connection
+  service_connection: DevOpsMI-ServiceConnection
 
 stages:
 
@@ -22,35 +22,34 @@ stages:
   displayName: "📝 Terraform Plan"
   jobs:
   - job: Plan
-    displayName: "Terraform Plan"
-    pool:
-      vmImage: ubuntu-latest
-
+    pool: { vmImage: ubuntu-latest }
     steps:
-    # 1) Azure CLI login via Managed Identity service connection
+
+    # 1) Login using your user-assigned Managed Identity
     - task: AzureCLI@2
-      displayName: "Azure CLI: login (Managed Identity)"
+      displayName: "Login (User-assigned Managed Identity)"
       inputs:
         azureSubscription: $(service_connection)
         scriptType: bash
-        addSpnToEnvironment: true
+        addSpnToEnvironment: true        # populates $servicePrincipalId
         useGlobalConfig: true
         scriptLocation: inlineScript
         inlineScript: |
-          # tell Terraform backend & provider to use MSI
-          export ARM_USE_MSI=true
-          # capture subscription & tenant for Terraform
+          # tell Terraform to use MSI
+          export ARM_USE_MSI=true                             # ← backend & provider
+          export ARM_CLIENT_ID=$servicePrincipalId            # ← user-assigned identity’s client-ID
           export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
           export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
-          echo "Using MSI – sub=$ARM_SUBSCRIPTION_ID tenant=$ARM_TENANT_ID"
+          echo "MSI active: sub=$ARM_SUBSCRIPTION_ID client=$ARM_CLIENT_ID"
 
-    # 2) terraform init (backend configured in your .tf files to use use_msi)
+    # 2) terraform init (backend.tf: use_msi = true)
     - script: |
         terraform init \
-          -backend-config="storage_account_name=yourtfstateacct" \
+          -backend-config="resource_group_name=$(resource_group)" \
+          -backend-config="storage_account_name=tfstatestorageacct2" \
           -backend-config="container_name=tfstate" \
           -backend-config="key=vmss.tfstate"
-      displayName: "terraform init"
+      displayName: terraform init
 
     # 3) terraform plan
     - script: |
@@ -63,7 +62,15 @@ stages:
           -var="vm_size=$(vm_size)" \
           -var="image_sku=$(image_sku)" \
           -var="identity_type=$(identity_type)"
-      displayName: "terraform plan"
+      displayName: terraform plan
+
+    # 4) manual approval
+    - task: ManualValidation@0
+      displayName: "✔️ Approve plan"
+      inputs:
+        instructions: "Review the plan above, then Approve to continue"
+        onTimeout: reject
+        timeoutInMinutes: 1440
 
 # ──────────────────────────────────────────────────────────────────────────────
 - stage: TerraformApply
@@ -71,14 +78,11 @@ stages:
   dependsOn: TerraformPlan
   jobs:
   - job: Apply
-    displayName: "Terraform Apply"
-    pool:
-      vmImage: ubuntu-latest
-
+    pool: { vmImage: ubuntu-latest }
     steps:
     # login again to refresh MSI token
     - task: AzureCLI@2
-      displayName: "Azure CLI: login (Managed Identity)"
+      displayName: "Login (User-assigned Managed Identity)"
       inputs:
         azureSubscription: $(service_connection)
         scriptType: bash
@@ -87,6 +91,7 @@ stages:
         scriptLocation: inlineScript
         inlineScript: |
           export ARM_USE_MSI=true
+          export ARM_CLIENT_ID=$servicePrincipalId
           export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
           export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
 
@@ -101,5 +106,6 @@ stages:
           -var="vm_size=$(vm_size)" \
           -var="image_sku=$(image_sku)" \
           -var="identity_type=$(identity_type)"
-      displayName: "terraform apply"
+      displayName: terraform apply
+ 
  
