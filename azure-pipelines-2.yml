@@ -1,31 +1,40 @@
 trigger: none
 
 variables:
-  service_connection: DevOpsMI-ServiceConnection  # Your service connection name
+  service_connection: DevOpsMI-ServiceConnection
 
 stages:
-
 - stage: TerraformPlan
   displayName: "📝 Terraform Plan"
   jobs:
   - job: Plan
     displayName: "Terraform Init & Plan"
     pool:
-      name: Default  # Use your self-hosted agent pool name (usually 'Default')
+      name: Default  # Your self-hosted agent pool name
     steps:
-
     - task: AzureCLI@2
       displayName: "Terraform Init & Plan"
       inputs:
         azureSubscription: $(service_connection)
-        scriptType: pscore  # Since it's a Windows VM, use PowerShell Core (not Bash)
+        scriptType: ps  # Use 'ps' for PowerShell script now
         addSpnToEnvironment: true
         useGlobalConfig: true
+        workingDirectory: $(System.DefaultWorkingDirectory)  # Adjust if your terraform files are inside a folder
         scriptLocation: inlineScript
         inlineScript: |
-          # Stop on error
           $ErrorActionPreference = "Stop"
 
-          Write-Host "🔵 Checking Terraform version"
-          terraform -
+          Write-Output "🔵 Checking Terraform version"
+          terraform version
+
+          Write-Output "🔵 Exporting environment variables for authentication"
+          $env:ARM_USE_MSI = "true"
+          $env:ARM_SUBSCRIPTION_ID = $(az account show --query id -o tsv)
+          $env:ARM_TENANT_ID = $(az account show --query tenantId -o tsv)
+
+          Write-Output "🔵 Running Terraform Init"
+          terraform init
+
+          Write-Output "🔵 Running Terraform Plan"
+          terraform plan
  
