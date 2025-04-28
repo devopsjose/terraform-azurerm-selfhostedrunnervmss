@@ -1,19 +1,83 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
+trigger: none
 
-trigger:
-- main
+variables:
+  service_connection: DevOpsMI-ServiceConnection
 
-pool:
-  vmImage: ubuntu-latest
+stages:
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+- stage: TerraformPlan
+  displayName: "📝 Terraform Plan"
+  jobs:
+  - job: Plan
+    displayName: "Terraform Init & Plan"
+    pool:
+      vmImage: ubuntu-latest
+    steps:
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    - task: AzureCLI@2
+      displayName: "Terraform Init & Plan"
+      inputs:
+        azureSubscription: $(service_connection)
+        scriptType: bash
+        addSpnToEnvironment: true
+        useGlobalConfig: true
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+
+          echo "🔵 Installing latest Terraform"
+          LATEST_TERRAFORM_VERSION=$(curl -s https://checkpoint-api.hashicorp.com/v1/check/terraform | jq -r .current_version)
+          echo "Latest Terraform version: $LATEST_TERRAFORM_VERSION"
+          wget https://releases.hashicorp.com/terraform/${LATEST_TERRAFORM_VERSION}/terraform_${LATEST_TERRAFORM_VERSION}_linux_amd64.zip
+          unzip terraform_${LATEST_TERRAFORM_VERSION}_linux_amd64.zip
+          sudo mv terraform /usr/local/bin
+          terraform -version
+
+          echo "🔵 Exporting environment variables for authentication"
+          export ARM_USE_MSI=true
+          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+
+          echo "🔵 Terraform Init"
+          terraform init
+
+          echo "🔵 Terraform Plan"
+          terraform plan
+
+- stage: TerraformApply
+  displayName: "🚀 Terraform Apply"
+  dependsOn: TerraformPlan
+  jobs:
+  - job: Apply
+    displayName: "Terraform Apply"
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+
+    - task: AzureCLI@2
+      displayName: "Terraform Apply"
+      inputs:
+        azureSubscription: $(service_connection)
+        scriptType: bash
+        addSpnToEnvironment: true
+        useGlobalConfig: true
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+
+          echo "🔵 Installing latest Terraform"
+          LATEST_TERRAFORM_VERSION=$(curl -s https://checkpoint-api.hashicorp.com/v1/check/terraform | jq -r .current_version)
+          echo "Latest Terraform version: $LATEST_TERRAFORM_VERSION"
+          wget https://releases.hashicorp.com/terraform/${LATEST_TERRAFORM_VERSION}/terraform_${LATEST_TERRAFORM_VERSION}_linux_amd64.zip
+          unzip terraform_${LATEST_TERRAFORM_VERSION}_linux_amd64.zip
+          sudo mv terraform /usr/local/bin
+          terraform -version
+
+          echo "🔵 Exporting environment variables for authentication"
+          export ARM_USE_MSI=true
+          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+
+          echo "🔵 Terraform Apply"
+          terraform apply -auto-approve
+ 
