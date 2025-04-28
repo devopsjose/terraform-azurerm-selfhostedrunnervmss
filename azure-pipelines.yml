@@ -62,22 +62,6 @@ stages:
             -var="identity_type=$(identity_type)"
         displayName: "terraform plan"
 
-  # 2) Manual approval job (agentless—pool: server)
-  - job: Confirm_Terraform_Plan
-    displayName: "✔️ Confirm Terraform Plan"
-    pool: server
-    timeoutInMinutes: 1440
-    steps:
-      - task: ManualValidation@0
-        timeoutInMinutes: 1440
-        inputs:
-          notifyUsers: ''               # required—even if blank :contentReference[oaicite:0]{index=0}
-          instructions: |
-            Please review the Terraform plan  
-            in the “Run terraform init & plan” job above,  
-            then click Approve to continue.
-          onTimeout: reject
-
 # ──────────────────────────────────────────────────────────────────────────────
 - stage: TerraformApply
   displayName: "🚀 Terraform Apply"
