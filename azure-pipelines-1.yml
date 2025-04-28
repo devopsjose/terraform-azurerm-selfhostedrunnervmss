@@ -1,7 +1,6 @@
 trigger: none
-
+ 
 variables:
-  # Terraform inputs
   location:       centralus
   resource_group: tfstate-rg
   vnet_name:      vmss-test-vnet
@@ -10,22 +9,20 @@ variables:
   vm_size:        Standard_B2ms
   image_sku:      22_04-lts
   identity_type:  SystemAssigned
-
-  # your DevOps MI service connection
+ 
   service_connection: DevOpsMI-ServiceConnection
-
+ 
 stages:
-
-# ──────────────── Plan Stage ─────────────────
+ 
 - stage: TerraformPlan
   displayName: "📝 Terraform Plan"
   jobs:
   - job: Plan
-    displayName: "Init & Plan (inside AzureCLI)"
+    displayName: "Init & Plan"
     pool:
       vmImage: ubuntu-latest
     steps:
-
+ 
     - task: AzureCLI@2
       displayName: "Login, Install Terraform, Init & Plan"
       inputs:
@@ -35,30 +32,18 @@ stages:
         useGlobalConfig: true
         scriptLocation: inlineScript
         inlineScript: |
-          # export SP credentials
           export ARM_CLIENT_ID=$servicePrincipalId
           export ARM_CLIENT_SECRET=$servicePrincipalKey
           export ARM_USE_AZUREAD=true
           export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
           export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
-
-          # install Terraform
-          TERRAFORM_VER=1.11.3
+ 
+          TERRAFORM_VER=1.7.5
           wget https://releases.hashicorp.com/terraform/${TERRAFORM_VER}/terraform_${TERRAFORM_VER}_linux_amd64.zip
           unzip terraform_${TERRAFORM_VER}_linux_amd64.zip
           sudo mv terraform /usr/local/bin
-
-          # init
-          terraform init \
-            -backend-config="resource_group_name=$(resource_group)" \
-            -backend-config="storage_account_name=tfstatestorageacct2" \
-            -backend-config="container_name=tfstate" \
-            -backend-config="key=vmss.tfstate" \
-            -backend-config="use_azuread_auth=true" \
-            -backend-config="subscription_id=$ARM_SUBSCRIPTION_ID" \
-            -backend-config="tenant_id=$ARM_TENANT_ID"
-
-          # plan
+ 
+          terraform init
           terraform plan \
             -var="location=$(location)" \
             -var="resource_group=$(resource_group)" \
@@ -68,8 +53,7 @@ stages:
             -var="vm_size=$(vm_size)" \
             -var="image_sku=$(image_sku)" \
             -var="identity_type=$(identity_type)"
-
-# ──────────────── Apply Stage ─────────────────
+ 
 - stage: TerraformApply
   displayName: "🚀 Terraform Apply"
   dependsOn: TerraformPlan
@@ -79,34 +63,33 @@ stages:
     pool:
       vmImage: ubuntu-latest
     steps:
-
-      - task: AzureCLI@2
-        displayName: "Login, Install Terraform, Apply"
-        inputs:
-          azureSubscription: $(service_connection)
-          scriptType: bash
-          addSpnToEnvironment: true
-          useGlobalConfig: true
-          scriptLocation: inlineScript
-          inlineScript: |
-            export ARM_CLIENT_ID=$servicePrincipalId
-            export ARM_CLIENT_SECRET=$servicePrincipalKey
-            export ARM_USE_AZUREAD=true
-            export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-            export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
-
-            TERRAFORM_VER=1.11.3
-            wget https://releases.hashicorp.com/terraform/${TERRAFORM_VER}/terraform_${TERRAFORM_VER}_linux_amd64.zip
-            unzip terraform_${TERRAFORM_VER}_linux_amd64.zip
-            sudo mv terraform /usr/local/bin
-
-            terraform apply -auto-approve \
-              -var="location=$(location)" \
-              -var="resource_group=$(resource_group)" \
-              -var="vnet_name=$(vnet_name)" \
-              -var="subnet_name=$(subnet_name)" \
-              -var="vmss_name=$(vmss_name)" \
-              -var="vm_size=$(vm_size)" \
-              -var="image_sku=$(image_sku)" \
-              -var="identity_type=$(identity_type)"
  
+    - task: AzureCLI@2
+      displayName: "Login, Install Terraform, Apply"
+      inputs:
+        azureSubscription: $(service_connection)
+        scriptType: bash
+        addSpnToEnvironment: true
+        useGlobalConfig: true
+        scriptLocation: inlineScript
+        inlineScript: |
+          export ARM_CLIENT_ID=$servicePrincipalId
+          export ARM_CLIENT_SECRET=$servicePrincipalKey
+          export ARM_USE_AZUREAD=true
+          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+ 
+          TERRAFORM_VER=1.7.5
+          wget https://releases.hashicorp.com/terraform/${TERRAFORM_VER}/terraform_${TERRAFORM_VER}_linux_amd64.zip
+          unzip terraform_${TERRAFORM_VER}_linux_amd64.zip
+          sudo mv terraform /usr/local/bin
+ 
+          terraform apply -auto-approve \
+            -var="location=$(location)" \
+            -var="resource_group=$(resource_group)" \
+            -var="vnet_name=$(vnet_name)" \
+            -var="subnet_name=$(subnet_name)" \
+            -var="vmss_name=$(vmss_name)" \
+            -var="vm_size=$(vm_size)" \
+            -var="image_sku=$(image_sku)" \
+            -var="identity_type=$(identity_type)"
