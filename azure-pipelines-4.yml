@@ -8,7 +8,6 @@ stages:
   jobs:
   - job: Plan
     steps:
-
     - task: AzureCLI@2
       displayName: 'Terraform Init & Plan'
       inputs:
