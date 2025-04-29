@@ -1,53 +1,31 @@
 trigger: none
-
-pool:
-  vmImage: 'windows-latest'
-
-stages:
-- stage: TerraformPlan
-  jobs:
-  - job: Plan
-    steps:
-
-    - task: AzureCLI@2
-      displayName: 'Install Terraform'
-      inputs:
-        azureSubscription: 'WifSC'
-        scriptType: 'ps'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          $ErrorActionPreference = "Stop"
-          Write-Output "Installing latest Terraform version"
-
-          $releasesUrl = "https://api.releases.hashicorp.com/v1/releases/terraform"
-          $latestVersion = (Invoke-RestMethod -Uri $releasesUrl).current_version
-          Write-Output "Latest Terraform version: $latestVersion"
-
-          $tfUrl = "https://releases.hashicorp.com/terraform/$latestVersion/terraform_${latestVersion}_windows_amd64.zip"
-          Invoke-WebRequest -Uri $tfUrl -OutFile terraform.zip
-          Expand-Archive terraform.zip -DestinationPath "$env:USERPROFILE\terraform" -Force
-          $env:PATH += ";$env:USERPROFILE\terraform"
-
-          terraform -version
-
-    - task: AzureCLI@2
-      displayName: 'Terraform Init & Plan'
-      inputs:
-        azureSubscription: 'WifSC'
-        scriptType: 'ps'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          $ErrorActionPreference = "Stop"
-
-          Write-Output "Setting environment variables for Terraform"
-          $env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
-          $env:ARM_TENANT_ID = (az account show --query tenantId -o tsv)
-          $env:ARM_CLIENT_ID = $env:servicePrincipalId
-          $env:ARM_CLIENT_SECRET = $env:servicePrincipalKey
-
-          Write-Output "Initializing Terraform"
-          terraform init -reconfigure
-
-          Write-Output "Running Terraform Plan"
-          terraform plan
  
+pool:
+  vmImage: 'windows-latest'  # or 'ubuntu-latest' for Linux agents
+ 
+steps:
+- task: TerraformInstaller@1
+  displayName: 'Install Terraform'
+  inputs:
+    terraformVersion: 'latest'  # Specify a version like '1.8.1' for consistency
+ 
+- task: AzureCLI@2
+  displayName: 'Terraform Init & Plan'
+  inputs:
+    azureSubscription: 'WifSC'
+    scriptType: 'ps'  # Use 'bash' if on a Linux agent
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      $ErrorActionPreference = "Stop"
+ 
+      Write-Output "Setting environment variables for Terraform"
+      $env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
+      $env:ARM_TENANT_ID = (az account show --query tenantId -o tsv)
+      $env:ARM_CLIENT_ID = $env:servicePrincipalId
+      $env:ARM_CLIENT_SECRET = $env:servicePrincipalKey
+ 
+      Write-Output "Initializing Terraform"
+      terraform init -reconfigure
+ 
+      Write-Output "Running Terraform Plan"
+      terraform plan
