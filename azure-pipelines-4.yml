@@ -1,7 +1,7 @@
 trigger: none
 
 pool:
-  vmImage: 'ubuntu-latest'  # Microsoft-hosted Ubuntu agent
+  vmImage: 'windows-latest'  # Or 'ubuntu-latest'
 
 stages:
 - stage: TerraformPlan
@@ -9,16 +9,35 @@ stages:
   - job: Plan
     steps:
     - task: AzureCLI@2
+      displayName: 'Install Terraform'
+      inputs:
+        azureSubscription: 'WifSC'  # Your WIF-based service connection
+        scriptType: 'ps'  # Use 'bash' for ubuntu
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          $version = "1.7.5"
+          $tfUrl = "https://releases.hashicorp.com/terraform/${version}/terraform_${version}_windows_amd64.zip"
+          Invoke-WebRequest -Uri $tfUrl -OutFile terraform.zip
+          Expand-Archive terraform.zip -DestinationPath "$env:USERPROFILE\terraform" -Force
+          $env:PATH += ";$env:USERPROFILE\terraform"
+          terraform -version
+
+    - task: AzureCLI@2
       displayName: 'Terraform Init & Plan'
       inputs:
-        azureSubscription: 'WifSC'  # Your WIF-enabled service connection
-        scriptType: 'bash'
+        azureSubscription: 'WifSC'
+        scriptType: 'ps'
         scriptLocation: 'inlineScript'
-        inlineScript: 
+        inlineScript: |
+          Write-Output "Setting environment variables for Terraform"
+          $env:ARM_CLIENT_ID = $env:servicePrincipalId
+          $env:ARM_CLIENT_SECRET = $env:servicePrincipalKey
+          $env:ARM_TENANT_ID = (az account show --query tenantId -o tsv)
+          $env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
 
-          echo "🔵 Terraform Init"
+          Write-Output "Initializing Terraform"
           terraform init -reconfigure
 
-          echo "🔵 Terraform Plan"
+          Write-Output "Running Terraform Plan"
           terraform plan
  
