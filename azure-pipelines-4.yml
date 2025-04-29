@@ -1,7 +1,7 @@
 trigger: none
 
 pool:
-  vmImage: 'ubuntu latest'  # Or 'ubuntu-latest'
+  vmImage: 'windows-latest'  # Or 'ubuntu-latest'
 
 stages:
 - stage: TerraformPlan
