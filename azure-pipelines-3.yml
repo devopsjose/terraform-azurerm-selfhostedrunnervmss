@@ -1,7 +1,7 @@
 trigger: none
 
 pool:
-  vmImage: 'windows-latest'  # Microsoft-hosted agent
+  vmImage: 'windows-latest'
 
 stages:
 - stage: TerraformPlan
@@ -16,17 +16,14 @@ stages:
         scriptType: 'ps'
         scriptLocation: 'inlineScript'
         inlineScript: |
-          # Download the latest Terraform version dynamically
           $ErrorActionPreference = "Stop"
           Write-Output "Installing latest Terraform version"
 
-          $page = Invoke-WebRequest -Uri https://releases.hashicorp.com/terraform/ -UseBasicParsing
-          $version = ($page.Content -split "`n" | Select-String -Pattern 'terraform/(\d+\.\d+\.\d+)/' | 
-            ForEach-Object { ($_ -match 'terraform/(\d+\.\d+\.\d+)/')[0]; $matches[1] })[0]
+          $releasesUrl = "https://api.releases.hashicorp.com/v1/releases/terraform"
+          $latestVersion = (Invoke-RestMethod -Uri $releasesUrl).current_version
+          Write-Output "Latest Terraform version: $latestVersion"
 
-          Write-Output "Latest Terraform version: $version"
-
-          $tfUrl = "https://releases.hashicorp.com/terraform/$version/terraform_${version}_windows_amd64.zip"
+          $tfUrl = "https://releases.hashicorp.com/terraform/$latestVersion/terraform_${latestVersion}_windows_amd64.zip"
           Invoke-WebRequest -Uri $tfUrl -OutFile terraform.zip
           Expand-Archive terraform.zip -DestinationPath "$env:USERPROFILE\terraform" -Force
           $env:PATH += ";$env:USERPROFILE\terraform"
