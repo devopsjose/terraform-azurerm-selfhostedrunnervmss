@@ -1,0 +1,35 @@
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'  # Faster and cleaner for scripting
+
+stages:
+- stage: TerraformPlan
+  jobs:
+  - job: Plan
+    steps:
+
+    # ✅ Install Terraform using official setup task (if available in your org)
+    - task: UseTerraform@0
+      inputs:
+        terraformVersion: 'latest'
+
+    # ✅ Authenticate and run Terraform Init & Plan
+    - task: AzureCLI@2
+      displayName: 'Terraform Init & Plan'
+      inputs:
+        azureSubscription: 'WifSC'  # Your WIF-enabled service connection
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          echo "🔵 Setting environment variables for Terraform AzureRM provider"
+          export ARM_CLIENT_ID=$servicePrincipalId
+          export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+          echo "🔵 Terraform Init"
+          terraform init -reconfigure
+
+          echo "🔵 Terraform Plan"
+          terraform plan
+ 
