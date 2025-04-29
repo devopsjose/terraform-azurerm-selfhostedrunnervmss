@@ -8,20 +8,10 @@ stages:
   jobs:
   - job: Plan
     steps:
-    - task: AzureCLI@2
+    - task: TerraformInstaller@1
       displayName: 'Install Terraform'
       inputs:
-        azureSubscription: 'WifSC'  # Your WIF-based service connection
-        scriptType: 'ps'  # Use 'bash' for ubuntu
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          $version = "1.7.5"
-          $tfUrl = "https://releases.hashicorp.com/terraform/${version}/terraform_${version}_windows_amd64.zip"
-          Invoke-WebRequest -Uri $tfUrl -OutFile terraform.zip
-          Expand-Archive terraform.zip -DestinationPath "$env:USERPROFILE\terraform" -Force
-          $env:PATH += ";$env:USERPROFILE\terraform"
-          terraform -version
-
+        terraformVersion: 'latest'  # You can also specify a version like '1.6.6'
     - task: AzureCLI@2
       displayName: 'Terraform Init & Plan'
       inputs:
