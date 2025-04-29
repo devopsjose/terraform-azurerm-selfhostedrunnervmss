@@ -1,7 +1,7 @@
 trigger: none
 
 pool:
-  vmImage: 'windows-latest'  # Or 'ubuntu-latest'
+  vmImage: 'ubuntu-latest'  # Microsoft-hosted Ubuntu agent
 
 stages:
 - stage: TerraformPlan
@@ -12,22 +12,23 @@ stages:
       displayName: 'Install Terraform'
       inputs:
         terraformVersion: 'latest'  # You can also specify a version like '1.6.6'
+
     - task: AzureCLI@2
       displayName: 'Terraform Init & Plan'
       inputs:
         azureSubscription: 'WifSC'
-        scriptType: 'ps'
+        scriptType: 'bash'
         scriptLocation: 'inlineScript'
         inlineScript: |
-          Write-Output "Setting environment variables for Terraform"
-          $env:ARM_CLIENT_ID = $env:servicePrincipalId
-          $env:ARM_CLIENT_SECRET = $env:servicePrincipalKey
-          $env:ARM_TENANT_ID = (az account show --query tenantId -o tsv)
-          $env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
+          echo "🔵 Setting environment variables for Terraform"
+          export ARM_CLIENT_ID=$servicePrincipalId
+          export ARM_CLIENT_SECRET=$servicePrincipalKey
+          export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-          Write-Output "Initializing Terraform"
+          echo "🔵 Initializing Terraform"
           terraform init -reconfigure
 
-          Write-Output "Running Terraform Plan"
+          echo "🔵 Running Terraform Plan"
           terraform plan
  
