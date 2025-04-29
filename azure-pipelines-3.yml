@@ -10,7 +10,31 @@ stages:
     steps:
 
     - task: AzureCLI@2
-      displayName: 'Install Terraform and Run Plan'
+      displayName: 'Install Terraform'
+      inputs:
+        azureSubscription: 'WifSC'
+        scriptType: 'ps'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Download the latest Terraform version dynamically
+          $ErrorActionPreference = "Stop"
+          Write-Output "Installing latest Terraform version"
+
+          $page = Invoke-WebRequest -Uri https://releases.hashicorp.com/terraform/ -UseBasicParsing
+          $version = ($page.Content -split "`n" | Select-String -Pattern 'terraform/(\d+\.\d+\.\d+)/' | 
+            ForEach-Object { ($_ -match 'terraform/(\d+\.\d+\.\d+)/')[0]; $matches[1] })[0]
+
+          Write-Output "Latest Terraform version: $version"
+
+          $tfUrl = "https://releases.hashicorp.com/terraform/$version/terraform_${version}_windows_amd64.zip"
+          Invoke-WebRequest -Uri $tfUrl -OutFile terraform.zip
+          Expand-Archive terraform.zip -DestinationPath "$env:USERPROFILE\terraform" -Force
+          $env:PATH += ";$env:USERPROFILE\terraform"
+
+          terraform -version
+
+    - task: AzureCLI@2
+      displayName: 'Terraform Init & Plan'
       inputs:
         azureSubscription: 'WifSC'
         scriptType: 'ps'
@@ -18,32 +42,15 @@ stages:
         inlineScript: |
           $ErrorActionPreference = "Stop"
 
-          # Get latest Terraform version
-          $response = Invoke-WebRequest -Uri https://releases.hashicorp.com/terraform/ -UseBasicParsing
-          if ($response.Content -match 'terraform/(\d+\.\d+\.\d+)/') {
-            $version = $matches[1]
-          } else {
-            throw "Could not determine latest Terraform version"
-          }
+          Write-Output "Setting environment variables for Terraform"
+          $env:ARM_SUBSCRIPTION_ID = (az account show --query id -o tsv)
+          $env:ARM_TENANT_ID = (az account show --query tenantId -o tsv)
+          $env:ARM_CLIENT_ID = $env:servicePrincipalId
+          $env:ARM_CLIENT_SECRET = $env:servicePrincipalKey
 
-          Write-Output "Installing Terraform $version"
-          $tfUrl = "https://releases.hashicorp.com/terraform/$version/terraform_${version}_windows_amd64.zip"
-          Invoke-WebRequest -Uri $tfUrl -OutFile terraform.zip
-          Expand-Archive terraform.zip -DestinationPath "$env:USERPROFILE\terraform" -Force
-          $env:PATH = "$env:USERPROFILE\terraform;$env:PATH"
-
-          terraform -version
-
-          # Get Azure environment variables
-          Write-Output "🔵 Setting ARM environment variables"
-          $subId = az account show --query id -o tsv
-          $tenantId = az account show --query tenantId -o tsv
-          $env:ARM_SUBSCRIPTION_ID = $subId
-          $env:ARM_TENANT_ID = $tenantId
-
-          Write-Output "🔵 Running terraform init"
+          Write-Output "Initializing Terraform"
           terraform init -reconfigure
 
-          Write-Output "🔵 Running terraform plan"
+          Write-Output "Running Terraform Plan"
           terraform plan
  
